@@ -2,6 +2,7 @@
 module Main where
 
 import Control.Monad
+import Numeric
 import Text.ParserCombinators.Parsec hiding (spaces)
 import System.Environment
 
@@ -50,12 +51,24 @@ parseNumber :: Parser LispVal
 -- parseNumber = do
 --  digits <- many1 digit
 --  return $ Number $ read digits
-parseNumber = many1 digit >>= return . Number . read
+-- parseNumber = many1 digit >>= return . Number . read
+{- Implement
+   http://www.schemers.org/Documents/Standards/R5RS/HTML/r5rs-Z-H-9.html#%_sec_6.2.4
+   but without exactness (just oct/hex really) -}
+parseNumber = do
+  prefixedNum <|> decimalDigits
+  where prefixedNum = char '#' >> baseDigits
+        decimalDigits = many1 digit >>= return . Number . read
+        baseDigits = octal <|> hex <|> dec
+        octal = char 'o' >> many1 octDigit >>= return . Number . fst . head . readOct
+        hex = char 'x' >> many1 hexDigit >>= return . Number . fst . head . readHex
+        dec = char 'd' >> decimalDigits
+        -- binary = char 'b' >> oneOf '01' >> ??
 
 parseExpr :: Parser LispVal
-parseExpr = parseAtom
+parseExpr = parseNumber
          <|> parseString
-         <|> parseNumber
+         <|> parseAtom
 
 symbol :: Parser Char
 symbol = oneOf "!#$%&|*+-/:<=>?@^_~"
