@@ -17,9 +17,16 @@ data LispVal =
 parseString :: Parser LispVal
 parseString = do
   char '"'
-  x <- many (noneOf "\"")
+  x <- many parseStringContents
   char '"'
   return $ String x
+
+parseStringContents :: Parser Char
+parseStringContents =
+  escapedQuote <|> noneOf "\""
+
+escapedQuote :: Parser Char
+escapedQuote =  char '\\' >> char '"' >> return '"'
 
 parseAtom :: Parser LispVal
 parseAtom = do
