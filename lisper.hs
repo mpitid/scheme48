@@ -23,10 +23,17 @@ parseString = do
 
 parseStringContents :: Parser Char
 parseStringContents =
-  escapedQuote <|> noneOf "\""
+  escapedChars <|> noneOf "\""
 
-escapedQuote :: Parser Char
-escapedQuote =  char '\\' >> char '"' >> return '"'
+escapedChars :: Parser Char
+escapedChars = do
+  char '\\'
+  c <- oneOf "\"nrt\\"
+  return $ case c of
+    'n' -> '\n'
+    't' -> '\t'
+    '\\' -> '\\'
+    _ -> c
 
 parseAtom :: Parser LispVal
 parseAtom = do
