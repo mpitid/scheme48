@@ -81,9 +81,8 @@ parseQuoted = do
   return $ List [Atom "quote", x]
 
 parseExpr :: Parser LispVal
-parseExpr = parseNumber
-         <|> parseString
-         <|> parseAtom
+parseExpr = parseString
+         <|> try parseNumber <|> parseAtom
          <|> parseQuoted
          <|> do
            char '('
