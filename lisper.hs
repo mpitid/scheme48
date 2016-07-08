@@ -65,10 +65,31 @@ parseNumber = do
         dec = char 'd' >> decimalDigits
         -- binary = char 'b' >> oneOf '01' >> ??
 
+parseList :: Parser LispVal
+parseList = liftM List $ sepBy parseExpr spaces
+
+parseDottedList :: Parser LispVal
+parseDottedList = do
+  head <- endBy parseExpr spaces
+  tail <- char '.' >> spaces >> parseExpr
+  return $ DottedList head tail
+
+parseQuoted :: Parser LispVal
+parseQuoted = do
+  char '\''
+  x <- parseExpr
+  return $ List [Atom "quote", x]
+
 parseExpr :: Parser LispVal
 parseExpr = parseNumber
          <|> parseString
          <|> parseAtom
+         <|> parseQuoted
+         <|> do
+           char '('
+           x <- try parseList <|> parseDottedList
+           char ')'
+           return x
 
 symbol :: Parser Char
 symbol = oneOf "!#$%&|*+-/:<=>?@^_~"
