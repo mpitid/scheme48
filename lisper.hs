@@ -65,14 +65,13 @@ parseNumber = do
         dec = char 'd' >> decimalDigits
         -- binary = char 'b' >> oneOf '01' >> ??
 
-parseList :: Parser LispVal
-parseList = liftM List $ sepBy parseExpr spaces
-
-parseDottedList :: Parser LispVal
-parseDottedList = do
-  head <- endBy parseExpr spaces
-  tail <- char '.' >> spaces >> parseExpr
-  return $ DottedList head tail
+parseLists :: Parser LispVal
+parseLists = do
+  head <- sepEndBy parseExpr spaces
+  tail <- optionMaybe $ char '.' >> spaces >> parseExpr
+  case tail of
+    Nothing -> return $ List head
+    Just tail -> return $ DottedList head tail
 
 parseQuoted :: Parser LispVal
 parseQuoted = do
@@ -86,7 +85,8 @@ parseExpr = parseString
          <|> parseQuoted
          <|> do
            char '('
-           x <- try parseList <|> parseDottedList
+           -- x <- try parseList <|> parseDottedList
+           x <- parseLists
            char ')'
            return x
 
