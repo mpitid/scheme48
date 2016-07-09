@@ -139,6 +139,7 @@ primitives = [
   , ("symbol?", booleanUnaryOp isSymbol)
   , ("number?", booleanUnaryOp isNumber)
   , ("string?", booleanUnaryOp isString)
+  , ("symbol->string", symbolToString)
   ]
 
 numericBinop :: (Integer -> Integer -> Integer) -> [LispVal] -> LispVal
@@ -171,6 +172,9 @@ isString _ = False
 isNumber :: LispVal -> Bool
 isNumber (Number _) = True
 isNumber _ = False
+
+symbolToString :: [LispVal] -> LispVal
+symbolToString [Atom s] = String s
 
 main :: IO ()
 main = getArgs >>= print . eval . readExpr . head
