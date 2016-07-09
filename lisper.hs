@@ -119,6 +119,7 @@ eval :: LispVal -> LispVal
 eval val@(String _) = val
 eval val@(Number _) = val
 eval val@(Bool _) = val
+eval val@(Atom _) = val
 eval (List [Atom "quote", val]) = val
 eval (List (Atom func : args)) = apply func $ map eval args
 
@@ -134,6 +135,10 @@ primitives = [
   , ("mod", numericBinop mod)
   , ("quotient", numericBinop quot)
   , ("remainder", numericBinop rem)
+  , ("boolean?", booleanUnaryOp isBoolean)
+  , ("symbol?", booleanUnaryOp isSymbol)
+  , ("number?", booleanUnaryOp isNumber)
+  , ("string?", booleanUnaryOp isString)
   ]
 
 numericBinop :: (Integer -> Integer -> Integer) -> [LispVal] -> LispVal
@@ -146,6 +151,26 @@ unpackNum (String n) =
   if null parsed then 0 else fst $ parsed !! 0
 unpackNum (List [n]) = unpackNum n
 unpackNum _ = 0
+
+booleanUnaryOp :: (LispVal -> Bool) -> [LispVal] -> LispVal
+booleanUnaryOp op [arg] = Bool $ op arg
+-- Just crash on invalid calls for now.
+
+isSymbol :: LispVal -> Bool
+isSymbol (Atom _) = True
+isSymbol _ = False
+
+isBoolean :: LispVal -> Bool
+isBoolean (Bool _) = True
+isBoolean _ = False
+
+isString :: LispVal -> Bool
+isString (String _) = True
+isString _ = False
+
+isNumber :: LispVal -> Bool
+isNumber (Number _) = True
+isNumber _ = False
 
 main :: IO ()
 main = getArgs >>= print . eval . readExpr . head
