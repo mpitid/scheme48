@@ -23,7 +23,19 @@ data LispError =
   | NotFunction String String
   | UnboundVar String String
   | Default String
-  deriving Show
+
+
+showError :: LispError -> String
+showError (UnboundVar msg var) = msg ++ ": " ++ var
+showError (BadSpecialForm msg form) = msg ++ ": " ++ show form
+showError (NotFunction msg func) = msg ++ ": " ++ show func
+showError (NumArgs expected found) = "Expected " ++ show expected
+                                  ++ " args; found values " ++ unwordsList found
+showError (TypeMismatch expected found) = "Invalid type: expected " ++ expected
+                                       ++ ", found " ++ show found
+showError (Parser parseErr) = "Parse error at " ++ show parseErr
+
+instance Show LispError where show = showError
 
 instance Error LispError where
   noMsg = Default "An error has occurred"
@@ -215,5 +227,4 @@ main = do
   -- We need the return to enter the IO monad, and then use <- to get out (well bind to the next action really).
   evaled <- return $ liftM show $ readExpr (args !! 0) >>= eval
   putStrLn $ extractValue $ trapError evaled
-  -- getArgs >>= print . extractValue . trapError . eval . readExpr . head
 
