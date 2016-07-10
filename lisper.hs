@@ -280,6 +280,21 @@ cons [x, DottedList xs t] = return $ DottedList (x : xs) t
 cons [x, t]               = return $ DottedList [x] t
 cons badArgList           = throwError $ NumArgs 2 badArgList
 
+-- Equivalence
+eqv :: [LispVal] -> ThrowsError LispVal
+eqv [Bool arg1, Bool arg2]             = return $ Bool $ arg1 == arg2
+eqv [Number arg1, Number arg2]         = return $ Bool $ arg1 == arg2
+eqv [String arg1, String arg2]         = return $ Bool $ arg1 == arg2
+eqv [Atom arg1, Atom arg2]             = return $ Bool $ arg1 == arg2
+eqv [DottedList xs x, DottedList ys y] = eqv [List $ xs ++ [x], List $ ys ++ [y]]
+eqv [List xs, List ys]                 = return $ Bool $ (length xs == length ys) && (all eqvPair $ zip xs ys)
+  where eqvPair (x1, x2) = case eqv [x1, x2] of
+                            Left err -> False
+                            Right (Bool val) -> val
+eqv [_, _]                             = return $ Bool False
+eqv badArgList                         = throwError $ NumArgs 2 badArgList
+
+
 main :: IO ()
 main = do
   args <- getArgs
