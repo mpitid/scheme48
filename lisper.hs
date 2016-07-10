@@ -8,6 +8,7 @@ import Control.Monad.Except
 import Numeric
 import Text.ParserCombinators.Parsec hiding (spaces)
 import System.Environment
+import System.IO
 
 data LispVal =
     Atom String
@@ -331,12 +332,38 @@ listEquals cmp (List xs) (List ys) =
                            Right (Bool val) -> val
 
 
+-- IO helpers
+
+flushStr :: String -> IO ()
+flushStr str = putStr str >> hFlush stdout
+
+readPrompt :: String -> IO String
+readPrompt prompt = flushStr prompt >> getLine
+
+evalString :: String -> IO String
+-- >>= has higher precendence than $, so this reads like this:
+-- liftM show (readExpr (args !! 0) >>= eval)
+evalString expr = return $ extractValue $ trapError (liftM show $ readExpr expr >>= eval)
+
+evalAndPrint :: String -> IO ()
+evalAndPrint expr = evalString expr >>= putStrLn
+
+-- The underscore is convention for monadic functions that repeat without returning a value.
+until_ :: Monad m => (a -> Bool) -> m a -> (a -> m ()) -> m ()
+until_ pred prompt action = do
+  result <- prompt
+  if pred result
+     then return ()
+     else action result >> until_ pred prompt action
+
+runRepl :: IO ()
+runRepl = until_ (== "quit") (readPrompt "lisp> ") evalAndPrint
+
 main :: IO ()
 main = do
   args <- getArgs
-  -- >>= has higher precendence than $, so this reads like this:
-  -- liftM show (readExpr (args !! 0) >>= eval)
-  -- We need the return to enter the IO monad, and then use <- to get out (well bind to the next action really).
-  evaled <- return $ liftM show $ readExpr (args !! 0) >>= eval
-  putStrLn $ extractValue $ trapError evaled
+  case args of
+    [] -> runRepl
+    [expr] -> evalAndPrint expr
+    otherwise -> putStrLn "usage: lisper [expr]"
 
