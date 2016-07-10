@@ -169,6 +169,7 @@ eval (List [Atom "if", pred, conseq, alt]) = do
     Bool True  -> eval conseq
     otherwise  -> throwError $ TypeMismatch "bool" otherwise
     --otherwise  -> eval conseq
+eval (List ((Atom "cond") : expressions)) = cond expressions
 eval (List (Atom func : args)) = mapM eval args >>= apply func
 eval badForm = throwError $ BadSpecialForm "Unrecognized special form" badForm
 
@@ -333,6 +334,31 @@ listEquals cmp (List xs) (List ys) =
                            Left err -> False
                            Right (Bool val) -> val
 
+-- TODO: Ensure `else` can only appear in the last place, would require manual recursion
+-- TODO: NumArgs with range of arguments, e.g. > 1
+cond :: [LispVal] -> ThrowsError LispVal
+cond []      = throwError $ NumArgs 1 []
+cond clauses = do
+  -- if result is [Nothing Nothing (Just x) ...], we want (Just x)
+  results <- mapM clause clauses
+  case foldl1 (\r c -> case r of Nothing -> c; Just x -> Just x) results of
+    Nothing -> throwError $ BadSpecialForm "cond with no matching clause near" (head clauses)
+    Just x -> return x
+--cond clauses = (mapM evalClause clauses) >>= return . last
+-- cond clauses = foldl (\p e -> case p of Left erreval e) (return $ Bool True) clauses
+
+clause :: LispVal -> ThrowsError (Maybe LispVal)
+clause (List ((Atom "else") : exprs)) = clause (List (Bool True : exprs))
+clause (List x@[test, Atom "=>", expr]) = throwError $ BadSpecialForm "not implemented yet" (Atom "=>")
+clause (List (test : exprs)) = do
+  testResult <- eval test
+  case testResult of
+    Bool True -> clauseExpr exprs >>= return . Just
+    Bool False -> return Nothing
+    otherwise -> throwError $ TypeMismatch "bool" otherwise
+
+clauseExpr :: [LispVal] -> ThrowsError LispVal
+clauseExpr exprs = mapM eval exprs >>= return . last
 
 -- IO helpers
 
