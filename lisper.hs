@@ -1,4 +1,6 @@
 
+{-# LANGUAGE ExistentialQuantification #-}
+
 module Main where
 
 import Control.Monad
@@ -24,6 +26,8 @@ data LispError =
   | UnboundVar String String
   | Default String
 
+
+data Unpacker = forall a. Eq a => AnyUnpacker (LispVal -> ThrowsError a)
 
 showError :: LispError -> String
 showError (UnboundVar msg var) = msg ++ ": " ++ var
@@ -196,6 +200,12 @@ primitives = [
   , ("string>?", strBoolBinop (>))
   , ("string<=?", strBoolBinop (<=))
   , ("string>=?", strBoolBinop (>=))
+  , ("car", car)
+  , ("cdr", cdr)
+  , ("cons", cons)
+  , ("eq?", eqv)
+  , ("eqv?", eqv)
+  , ("equal?", equal)
   ]
 
 numBoolBinop = boolBinop unpackNum
@@ -294,6 +304,25 @@ eqv [List xs, List ys]                 = return $ Bool $ (length xs == length ys
 eqv [_, _]                             = return $ Bool False
 eqv badArgList                         = throwError $ NumArgs 2 badArgList
 
+
+unpackEquals :: LispVal -> LispVal -> Unpacker -> ThrowsError Bool
+unpackEquals arg1 arg2 (AnyUnpacker unpacker) = do
+    un1 <- unpacker arg1
+    un2 <- unpacker arg2
+    return $ un1 == un2
+  -- I like this curried const trick, used because catchError expects a function
+  `catchError` (const $ return False)
+
+equal :: [LispVal] -> ThrowsError LispVal
+equal [x, y]     = do
+  primitiveEquals <- liftM or $ mapM (unpackEquals x y)
+                     [AnyUnpacker unpackNum, AnyUnpacker unpackStr, AnyUnpacker unpackBool]
+  --eqvEquals <- eqv [x, y]
+  --return $ Bool $ (primitiveEquals || let (Bool x) = eqvEquals in x)
+  Bool x' <- eqv [x, y]
+  return $ Bool $ (primitiveEquals || x')
+
+equal badArgList = throwError $ NumArgs 2 badArgList
 
 main :: IO ()
 main = do
