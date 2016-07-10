@@ -2,6 +2,7 @@
 module Main where
 
 import Control.Monad
+import Control.Monad.Error
 import Numeric
 import Text.ParserCombinators.Parsec hiding (spaces)
 import System.Environment
@@ -13,6 +14,27 @@ data LispVal =
   | Number Integer
   | String String
   | Bool Bool
+
+data LispError =
+    NumArgs Integer [LispVal]
+  | TypeMismatch String LispVal
+  | Parser ParseError
+  | BadSpecialForm String LispVal
+  | NotFunction String String
+  | UnboundVar String String
+  | Default String
+  deriving Show
+
+instance Error LispError where
+  noMsg = Default "An error has occurred"
+  strMsg = Default
+
+type ThrowsError = Either LispError -- curried type-constructor
+
+trapError action = catchError action (return . show)
+
+extractValue :: ThrowsError a -> a
+extractValue (Right val) = val
 
 showVal :: LispVal -> String
 showVal (String contents) = "\"" ++ contents ++ "\""
@@ -106,27 +128,30 @@ parseExpr = parseString
 symbol :: Parser Char
 symbol = oneOf "!#$%&|*+-/:<=>?@^_~"
 
-readExpr :: String -> LispVal
+readExpr :: String -> ThrowsError LispVal
 readExpr input = case parse parseExpr "lisp" input of
-  Left err -> String $ "No match: " ++ show err
-  Right val -> val
+  Left err -> throwError $ Parser err
+  Right val -> return val
 
 spaces :: Parser ()
 spaces = skipMany1 space
 
 
-eval :: LispVal -> LispVal
-eval val@(String _) = val
-eval val@(Number _) = val
-eval val@(Bool _) = val
-eval val@(Atom _) = val
-eval (List [Atom "quote", val]) = val
-eval (List (Atom func : args)) = apply func $ map eval args
+eval :: LispVal -> ThrowsError LispVal
+eval val@(String _) = return val
+eval val@(Number _) = return val
+eval val@(Bool _) = return val
+eval val@(Atom _) = return val
+eval (List [Atom "quote", val]) = return val
+eval (List (Atom func : args)) = mapM eval args >>= apply func
+eval badForm = throwError $ BadSpecialForm "Unrecognized special form" badForm
 
-apply :: String -> [LispVal] -> LispVal
-apply func args = maybe (Bool False) ($ args) $ lookup func primitives
+apply :: String -> [LispVal] -> ThrowsError LispVal
+apply func args =
+  maybe (Left $ NotFunction func "??") ($ args) $ lookup func primitives
+    --return $ maybe (Bool False) ($ args) $ lookup func primitives
 
-primitives :: [(String, [LispVal] -> LispVal)]
+primitives :: [(String, [LispVal] -> ThrowsError LispVal)]
 primitives = [
     ("+", numericBinop (+))
   , ("-", numericBinop (-))
@@ -142,20 +167,25 @@ primitives = [
   , ("symbol->string", symbolToString)
   ]
 
-numericBinop :: (Integer -> Integer -> Integer) -> [LispVal] -> LispVal
-numericBinop op params = Number $ foldl1 op $ map unpackNum params
+numericBinop :: (Integer -> Integer -> Integer) -> [LispVal] -> ThrowsError LispVal
+numericBinop op [] = throwError $ NumArgs 2 []
+numericBinop op param@[_]  = throwError $ NumArgs 2 param
+numericBinop op params = mapM unpackNum params >>= return . Number . foldl1 op
 
-unpackNum :: LispVal -> Integer
-unpackNum (Number n) = n
+
+unpackNum :: LispVal -> ThrowsError Integer
+unpackNum (Number n) = return n
 unpackNum (String n) =
-  let parsed = reads n :: [(Integer, String)] in
-  if null parsed then 0 else fst $ parsed !! 0
+  let parsed = reads n in
+  if null parsed
+  then throwError $ TypeMismatch "number" $ String n
+  else return $ fst $ parsed !! 0
 unpackNum (List [n]) = unpackNum n
-unpackNum _ = 0
+unpackNum notNum = throwError $ TypeMismatch "number" notNum
 
-booleanUnaryOp :: (LispVal -> Bool) -> [LispVal] -> LispVal
-booleanUnaryOp op [arg] = Bool $ op arg
--- Just crash on invalid calls for now.
+booleanUnaryOp :: (LispVal -> Bool) -> [LispVal] -> ThrowsError LispVal
+booleanUnaryOp op [arg] = return $ Bool $ op arg
+booleanUnaryOp op args = throwError $ NumArgs 2 args
 
 isSymbol :: LispVal -> Bool
 isSymbol (Atom _) = True
@@ -173,9 +203,15 @@ isNumber :: LispVal -> Bool
 isNumber (Number _) = True
 isNumber _ = False
 
-symbolToString :: [LispVal] -> LispVal
-symbolToString [Atom s] = String s
+symbolToString :: [LispVal] -> ThrowsError LispVal
+symbolToString [Atom s] = Right $ String s
+symbolToString [term] = Left $ TypeMismatch "atom" term
+symbolToString terms =  Left $ NumArgs 1 terms
 
 main :: IO ()
-main = getArgs >>= print . eval . readExpr . head
+main = do
+  args <- getArgs
+  evaled <- return $ liftM show $ readExpr (args !! 0) >>= eval
+  putStrLn $ extractValue $ trapError evaled
+  -- getArgs >>= print . extractValue . trapError . eval . readExpr . head
 
