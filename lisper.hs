@@ -2,7 +2,7 @@
 module Main where
 
 import Control.Monad
-import Control.Monad.Error
+import Control.Monad.Except
 import Numeric
 import Text.ParserCombinators.Parsec hiding (spaces)
 import System.Environment
@@ -37,9 +37,11 @@ showError (Parser parseErr) = "Parse error at " ++ show parseErr
 
 instance Show LispError where show = showError
 
-instance Error LispError where
+{- This is no longer necessary: http://stackoverflow.com/questions/31221410/adapting-error-to-except#31223291
+instance Except LispError where
   noMsg = Default "An error has occurred"
   strMsg = Default
+-}
 
 type ThrowsError = Either LispError -- curried type-constructor
 
