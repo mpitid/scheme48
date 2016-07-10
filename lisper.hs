@@ -259,6 +259,27 @@ symbolToString [Atom s] = Right $ String s
 symbolToString [term] = Left $ TypeMismatch "atom" term
 symbolToString terms =  Left $ NumArgs 1 terms
 
+-- List-manipulation primitives:
+
+car :: [LispVal] -> ThrowsError LispVal
+car [List (x : xs)]         = return x
+car [DottedList (x : xs) _] = return x
+car [badArg]                = throwError $ TypeMismatch "pair" badArg
+car badArgList              = throwError $ NumArgs 1 badArgList
+
+cdr :: [LispVal] -> ThrowsError LispVal
+cdr [List (_ : xs)]         = return $ List xs
+cdr [DottedList [_] t]      = return t
+cdr [DottedList (_ : xs) t] = return $ DottedList xs t
+cdr [badArg]                = throwError $ TypeMismatch "pair" badArg
+cdr badArgList              = throwError $ NumArgs 1 badArgList
+
+cons :: [LispVal] -> ThrowsError LispVal
+cons [x, List xs]         = return $ List $ x : xs
+cons [x, DottedList xs t] = return $ DottedList (x : xs) t
+cons [x, t]               = return $ DottedList [x] t
+cons badArgList           = throwError $ NumArgs 2 badArgList
+
 main :: IO ()
 main = do
   args <- getArgs
