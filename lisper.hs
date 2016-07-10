@@ -148,8 +148,7 @@ eval badForm = throwError $ BadSpecialForm "Unrecognized special form" badForm
 
 apply :: String -> [LispVal] -> ThrowsError LispVal
 apply func args =
-  maybe (Left $ NotFunction func "??") ($ args) $ lookup func primitives
-    --return $ maybe (Bool False) ($ args) $ lookup func primitives
+  maybe (throwError $ NotFunction "Unrecognised primitive function" func) ($ args) $ lookup func primitives
 
 primitives :: [(String, [LispVal] -> ThrowsError LispVal)]
 primitives = [
@@ -211,6 +210,9 @@ symbolToString terms =  Left $ NumArgs 1 terms
 main :: IO ()
 main = do
   args <- getArgs
+  -- >>= has higher precendence than $, so this reads like this:
+  -- liftM show (readExpr (args !! 0) >>= eval)
+  -- We need the return to enter the IO monad, and then use <- to get out (well bind to the next action really).
   evaled <- return $ liftM show $ readExpr (args !! 0) >>= eval
   putStrLn $ extractValue $ trapError evaled
   -- getArgs >>= print . extractValue . trapError . eval . readExpr . head
