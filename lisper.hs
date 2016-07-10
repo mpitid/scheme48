@@ -178,13 +178,36 @@ primitives = [
   , ("number?", booleanUnaryOp isNumber)
   , ("string?", booleanUnaryOp isString)
   , ("symbol->string", symbolToString)
+  , ("=", numBoolBinop (==))
+  , ("<", numBoolBinop (<))
+  , (">", numBoolBinop (>))
+  , ("/=", numBoolBinop (/=))
+  , ("<=", numBoolBinop (<=))
+  , (">=", numBoolBinop (>=))
+  , ("&&", boolBoolBinop (&&))
+  , ("||", boolBoolBinop (||))
+  , ("string=?", strBoolBinop (==))
+  , ("string<?", strBoolBinop (<))
+  , ("string>?", strBoolBinop (>))
+  , ("string<=?", strBoolBinop (<=))
+  , ("string>=?", strBoolBinop (>=))
   ]
+
+numBoolBinop = boolBinop unpackNum
+strBoolBinop = boolBinop unpackStr
+boolBoolBinop = boolBinop unpackBool
+
+boolBinop :: (LispVal -> ThrowsError a) -> (a -> a -> Bool) -> [LispVal] -> ThrowsError LispVal
+boolBinop unpacker op [a1, a2] = do
+  left <- unpacker a1
+  right <- unpacker a2
+  return $ Bool $ left `op` right
+boolBinop _ _ args = throwError $ NumArgs 2 args
 
 numericBinop :: (Integer -> Integer -> Integer) -> [LispVal] -> ThrowsError LispVal
 numericBinop op [] = throwError $ NumArgs 2 []
 numericBinop op param@[_]  = throwError $ NumArgs 2 param
 numericBinop op params = mapM unpackNum params >>= return . Number . foldl1 op
-
 
 unpackNum :: LispVal -> ThrowsError Integer
 unpackNum (Number n) = return n
@@ -195,6 +218,16 @@ unpackNum (String n) =
   else return $ fst $ parsed !! 0
 unpackNum (List [n]) = unpackNum n
 unpackNum notNum = throwError $ TypeMismatch "number" notNum
+
+unpackStr :: LispVal -> ThrowsError String
+unpackStr (String s) = return s
+unpackStr (Number s) = return $ show s
+unpackStr (Bool s)   = return $ show s
+unpackStr notString  = throwError $ TypeMismatch "string" notString
+
+unpackBool :: LispVal -> ThrowsError Bool
+unpackBool (Bool b) = return b
+unpackBool notBool  = throwError $ TypeMismatch "boolean" notBool
 
 booleanUnaryOp :: (LispVal -> Bool) -> [LispVal] -> ThrowsError LispVal
 booleanUnaryOp op [arg] = return $ Bool $ op arg
