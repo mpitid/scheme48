@@ -299,10 +299,7 @@ eqv [Number arg1, Number arg2]         = return $ Bool $ arg1 == arg2
 eqv [String arg1, String arg2]         = return $ Bool $ arg1 == arg2
 eqv [Atom arg1, Atom arg2]             = return $ Bool $ arg1 == arg2
 eqv [DottedList xs x, DottedList ys y] = eqv [List $ xs ++ [x], List $ ys ++ [y]]
-eqv [List xs, List ys]                 = return $ Bool $ (length xs == length ys) && (all eqvPair $ zip xs ys)
-  where eqvPair (x1, x2) = case eqv [x1, x2] of
-                            Left err -> False
-                            Right (Bool val) -> val
+eqv [a@(List xs), b@(List ys)] = listEquals (\x y -> eqv [x, y]) a b
 eqv [_, _]                             = return $ Bool False
 eqv badArgList                         = throwError $ NumArgs 2 badArgList
 
@@ -323,8 +320,16 @@ equal [x, y]     = do
   --return $ Bool $ (primitiveEquals || let (Bool x) = eqvEquals in x)
   Bool x' <- eqv [x, y]
   return $ Bool $ (primitiveEquals || x')
-
 equal badArgList = throwError $ NumArgs 2 badArgList
+
+listEquals :: (LispVal -> LispVal -> ThrowsError LispVal)
+           -> LispVal -> LispVal -> ThrowsError LispVal
+listEquals cmp (List xs) (List ys) =
+    return $ Bool $ (length xs == length ys)  && (all eqvPair $ zip xs ys)
+  where eqvPair (x, y) = case cmp x y of
+                           Left err -> False
+                           Right (Bool val) -> val
+
 
 main :: IO ()
 main = do
