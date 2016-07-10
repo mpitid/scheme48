@@ -314,6 +314,8 @@ unpackEquals arg1 arg2 (AnyUnpacker unpacker) = do
   `catchError` (const $ return False)
 
 equal :: [LispVal] -> ThrowsError LispVal
+equal [x@(List _), y@(List _)] = listEquals (\a b -> equal [a, b]) x y
+equal [DottedList xs x, DottedList ys y] = listEquals (\a b -> equal [a, b]) (List $ xs ++ [x]) (List $ ys ++ [y])
 equal [x, y]     = do
   primitiveEquals <- liftM or $ mapM (unpackEquals x y)
                      [AnyUnpacker unpackNum, AnyUnpacker unpackStr, AnyUnpacker unpackBool]
