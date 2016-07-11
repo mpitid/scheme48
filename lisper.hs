@@ -9,6 +9,7 @@ import Numeric
 import Text.ParserCombinators.Parsec hiding (spaces)
 import System.Environment
 import System.IO
+import Data.IORef
 
 data LispVal =
     Atom String
@@ -27,8 +28,12 @@ data LispError =
   | UnboundVar String String
   | Default String
 
-
 data Unpacker = forall a. Eq a => AnyUnpacker (LispVal -> ThrowsError a)
+
+type Env = IORef [(String, IORef LispVal)]
+
+-- A monad that may contain IO actions that throw a LispError
+type IOThrowsError = ExceptT LispError IO
 
 showError :: LispError -> String
 showError (UnboundVar msg var) = msg ++ ": " ++ var
@@ -156,22 +161,26 @@ spaces :: Parser ()
 spaces = skipMany1 space
 
 
-eval :: LispVal -> ThrowsError LispVal
-eval val@(String _) = return val
-eval val@(Number _) = return val
-eval val@(Bool _) = return val
-eval val@(Atom _) = return val
-eval (List [Atom "quote", val]) = return val
-eval (List [Atom "if", pred, conseq, alt]) = do
-  result <- eval pred
+eval :: Env -> LispVal -> IOThrowsError LispVal
+eval env val@(String _) = return val
+eval env val@(Number _) = return val
+eval env val@(Bool _) = return val
+eval env val@(Atom id) = getVar env id
+eval env (List [Atom "quote", val]) = return val
+eval env (List [Atom "if", pred, conseq, alt]) = do
+  result <- eval env pred
   case result of
-    Bool False -> eval alt
-    Bool True  -> eval conseq
+    Bool False -> eval env alt
+    Bool True  -> eval env conseq
     otherwise  -> throwError $ TypeMismatch "bool" otherwise
     --otherwise  -> eval conseq
-eval (List ((Atom "cond") : expressions)) = cond expressions
-eval (List (Atom func : args)) = mapM eval args >>= apply func
-eval badForm = throwError $ BadSpecialForm "Unrecognized special form" badForm
+--eval env  (List ((Atom "cond") : expressions)) = cond expressions
+eval env (List [Atom "set!", Atom var, form]) =
+  eval env form >>= setVar env var
+eval env (List [Atom "define", Atom var, form]) =
+  eval env form >>= defineVar env var
+eval env (List (Atom func : args)) = mapM (eval env) args >>= liftThrows . apply func
+eval env badForm = throwError $ BadSpecialForm "Unrecognized special form" badForm
 
 apply :: String -> [LispVal] -> ThrowsError LispVal
 apply func args =
@@ -334,31 +343,90 @@ listEquals cmp (List xs) (List ys) =
                            Left err -> False
                            Right (Bool val) -> val
 
+{-
 -- TODO: Ensure `else` can only appear in the last place, would require manual recursion
 -- TODO: NumArgs with range of arguments, e.g. > 1
-cond :: [LispVal] -> ThrowsError LispVal
-cond []      = throwError $ NumArgs 1 []
-cond clauses = do
+cond :: Env -> [LispVal] -> ThrowsError LispVal
+cond env []      = throwError $ NumArgs 1 []
+cond env clauses = do
   -- if result is [Nothing Nothing (Just x) ...], we want (Just x)
-  results <- mapM clause clauses
+  results <- mapM (clause env) clauses
   case foldl1 (\r c -> case r of Nothing -> c; Just x -> Just x) results of
     Nothing -> throwError $ BadSpecialForm "cond with no matching clause near" (head clauses)
     Just x -> return x
 --cond clauses = (mapM evalClause clauses) >>= return . last
 -- cond clauses = foldl (\p e -> case p of Left erreval e) (return $ Bool True) clauses
 
-clause :: LispVal -> ThrowsError (Maybe LispVal)
-clause (List ((Atom "else") : exprs)) = clause (List (Bool True : exprs))
-clause (List x@[test, Atom "=>", expr]) = throwError $ BadSpecialForm "not implemented yet" (Atom "=>")
-clause (List (test : exprs)) = do
-  testResult <- eval test
+clause :: Env -> LispVal -> IOThrowsError (Maybe LispVal)
+clause env (List ((Atom "else") : exprs)) = clause env (List (Bool True : exprs))
+clause env (List x@[test, Atom "=>", expr]) = throwError $ BadSpecialForm "not implemented yet" (Atom "=>")
+clause env (List (test : exprs)) = do
+  testResult <- eval env test
   case testResult of
     Bool True -> clauseExpr exprs >>= return . Just
     Bool False -> return Nothing
     otherwise -> throwError $ TypeMismatch "bool" otherwise
 
-clauseExpr :: [LispVal] -> ThrowsError LispVal
-clauseExpr exprs = mapM eval exprs >>= return . last
+clauseExpr :: Env -> [LispVal] -> IOThrowsError LispVal
+clauseExpr env exprs = mapM (eval env) exprs >>= return . last
+-}
+
+-- Environment
+
+nullEnv :: IO Env
+nullEnv = newIORef []
+
+isBound :: Env -> String -> IO Bool
+isBound envRef var = readIORef envRef >>= return . maybe False (const True) . lookup var
+
+-- Only a single monad can be referenced in a do block
+-- so we need to lift the ref from the IO monad to the combined IOError monad
+getVar :: Env -> String -> IOThrowsError LispVal
+getVar envRef var = do
+  env <- liftIO $ readIORef envRef
+  maybe (throwError $ UnboundVar "Getting an unbound variable" var)
+        (liftIO . readIORef)
+        (lookup var env)
+
+setVar :: Env -> String -> LispVal -> IOThrowsError LispVal
+setVar envRef var value = do
+  env <- liftIO $ readIORef envRef
+  maybe (throwError $ UnboundVar "Setting an unbound variable" var)
+        -- flip changes argument order to create our write closure
+        (liftIO . (flip writeIORef value))
+        (lookup var env)
+  return value
+
+defineVar :: Env -> String -> LispVal -> IOThrowsError LispVal
+defineVar envRef var value = do
+  alreadyDefined <- liftIO $ isBound envRef var
+  if alreadyDefined
+     then setVar envRef var value
+     else liftIO $ do
+          valueRef <- newIORef value
+          env <- readIORef envRef
+          writeIORef envRef ((var, valueRef) : env)
+          return value
+
+-- Why do we need to create a new IORef at the end of this given that it's stateful?
+bindVars :: Env -> [(String, LispVal)] -> IO Env
+bindVars envRef bindings =
+  readIORef envRef >>= extendEnv bindings >>= newIORef
+  where extendEnv bindings env = liftM (++ env) (mapM addBinding bindings)
+        addBinding (var, value) = newIORef value >>= return . (,) var
+--          return $ env ++ map (\(k, v) -> (k, newIORef v)) bindings
+-- foldl (\e (var, value) -> defineVar e var value) envRef bindings
+--env <- readIORef envRef
+-- return envRef
+
+-- Working with multiple Monads is a pain
+
+liftThrows :: ThrowsError a -> IOThrowsError a
+liftThrows (Left err) = throwError err
+liftThrows (Right val) = return val
+
+runIOThrows :: IOThrowsError String -> IO String
+runIOThrows action = runExceptT (trapError action) >>= return . extractValue
 
 -- IO helpers
 
@@ -368,13 +436,14 @@ flushStr str = putStr str >> hFlush stdout
 readPrompt :: String -> IO String
 readPrompt prompt = flushStr prompt >> getLine
 
-evalString :: String -> IO String
+evalString :: Env -> String -> IO String
 -- >>= has higher precendence than $, so this reads like this:
 -- liftM show (readExpr (args !! 0) >>= eval)
-evalString expr = return $ extractValue $ trapError (liftM show $ readExpr expr >>= eval)
+evalString env expr =
+  runIOThrows (liftM show $ (liftThrows $ readExpr expr) >>= eval env)
 
-evalAndPrint :: String -> IO ()
-evalAndPrint expr = evalString expr >>= putStrLn
+evalAndPrint :: Env -> String -> IO ()
+evalAndPrint env expr = evalString env expr >>= putStrLn
 
 -- The underscore is convention for monadic functions that repeat without returning a value.
 until_ :: Monad m => (a -> Bool) -> m a -> (a -> m ()) -> m ()
@@ -384,14 +453,18 @@ until_ pred prompt action = do
      then return ()
      else action result >> until_ pred prompt action
 
+
+runOne :: String -> IO ()
+runOne expr = nullEnv >>= flip evalAndPrint expr
+
 runRepl :: IO ()
-runRepl = until_ (== "quit") (readPrompt "lisp> ") evalAndPrint
+runRepl = nullEnv >>= until_ (== "quit") (readPrompt "lisp> ") . evalAndPrint
 
 main :: IO ()
 main = do
   args <- getArgs
   case args of
     [] -> runRepl
-    [expr] -> evalAndPrint expr
+    [expr] -> runOne expr
     otherwise -> putStrLn "usage: lisper [expr]"
 
