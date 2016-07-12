@@ -505,6 +505,7 @@ defineVar envRef var value = do
           return value
 
 -- Why do we need to create a new IORef at the end of this given that it's stateful?
+-- Because of lexical scoping!
 bindVars :: Env -> [(String, LispVal)] -> IO Env
 bindVars envRef bindings =
   readIORef envRef >>= extendEnv bindings >>= newIORef
