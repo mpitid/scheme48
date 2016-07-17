@@ -173,11 +173,14 @@ readOrThrow parser input = case parse parser "lisp" input of
 readExpr :: String -> ThrowsError LispVal
 readExpr = readOrThrow parseExpr
 
-readExprList = readOrThrow (endBy parseExpr spaces)
+readExprList = readOrThrow parseExpressions
+
+parseExpressions :: Parser [LispVal]
+parseExpressions =
+  optional spaces >> endBy parseExpr spaces
 
 spaces :: Parser ()
 spaces = skipMany1 space
-
 
 eval :: Env -> LispVal -> IOThrowsError LispVal
 eval env val@(String _) = return val
