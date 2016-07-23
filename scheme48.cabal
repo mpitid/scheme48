@@ -8,7 +8,7 @@ synopsis:            https://en.wikibooks.org/wiki/Write_Yourself_a_Scheme_in_48
 license:             MIT
 license-file:        LICENSE
 author:              Michael Pitidis
-maintainer:          mpitid@gmail.com
+-- maintainer:          
 -- copyright:           
 category:            Language
 build-type:          Simple
