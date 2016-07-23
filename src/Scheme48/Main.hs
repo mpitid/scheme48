@@ -1,6 +1,6 @@
 
 module Scheme48.Main (
-    main
+    scheme48
   ) where
 
 import System.IO
@@ -13,8 +13,8 @@ import Scheme48.Environment
 import Scheme48.Interpreter
 
 -- Execute a sequence of statements or bring up an interactive REPL.
-main :: IO ()
-main = do
+scheme48 :: IO ()
+scheme48 = do
   args <- getArgs
   if null args then runRepl else runOne args
 
