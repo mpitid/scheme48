@@ -1,4 +1,8 @@
 
+;;
+;; A standard library for Scheme48
+;;
+
 (define (not x)
   (if x #f #t))
 

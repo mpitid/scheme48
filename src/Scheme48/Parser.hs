@@ -7,7 +7,7 @@ module Scheme48.Parser (
 import Numeric
 import Control.Monad.Except (throwError)
 import Text.ParserCombinators.Parsec hiding (spaces)
-
+import Text.Parsec.Char (endOfLine)
 import Scheme48.Core
 
 readExprList :: String -> ThrowsError [LispVal]
@@ -102,8 +102,19 @@ symbol = oneOf "!#$%&|*+-/:<=>?@^_~"
 
 parseExpressions :: Parser [LispVal]
 parseExpressions =
-  optional spaces >> endBy parseExpr spaces
+  optional whiteSpace >> endBy parseExpr whiteSpace
 
 spaces :: Parser ()
 spaces = skipMany1 space
 
+comment :: Parser String
+comment =
+  char ';' >> manyTill anyChar endOfLine
+
+whiteSpace :: Parser ()
+whiteSpace =
+  skipMany $ (skip comment) <|> (skip space)
+
+skip :: Parser a -> Parser ()
+skip p =
+  p >> return ()
